@@ -26,5 +26,5 @@ RUN npm install --omit=dev
 
 EXPOSE 8080
 
-# Use the appropriate entrypoint
-ENTRYPOINT ["npx", "mcp-proxy", "node", "dist/index.js"]
+# Use a simpler entrypoint that matches npm start
+ENTRYPOINT ["node", "dist/index.js"]
