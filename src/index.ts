@@ -150,17 +150,67 @@ class ApolloServer {
               q_organization_domains_list: {
                 type: "array",
                 items: { type: "string" },
-                description: "List of organization domains to search within",
+                description:
+                  "The domain names for the person's employer (current or previous). Do not include www. Up to 1,000 domains per request.",
               },
               person_titles: {
                 type: "array",
                 items: { type: "string" },
-                description: "List of job titles to search for",
+                description:
+                  "Job titles held by the people you want to find. Results include similar titles unless include_similar_titles is set to false.",
+              },
+              include_similar_titles: {
+                type: "boolean",
+                description:
+                  "When false, only returns exact matches for titles specified in person_titles. Default is true.",
+              },
+              person_locations: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Locations where people live. Can search cities, US states, and countries.",
               },
               person_seniorities: {
                 type: "array",
                 items: { type: "string" },
-                description: "List of seniority levels to search for",
+                description:
+                  "Job seniority levels. Options: owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern.",
+              },
+              organization_locations: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Location of company headquarters for a person's current employer.",
+              },
+              contact_email_status: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Email statuses to search for. Options: verified, unverified, likely to engage, unavailable.",
+              },
+              organization_ids: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Apollo IDs for specific companies to include in search results.",
+              },
+              organization_num_employees_ranges: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Number ranges of employees at the person's company. Format: 'min,max' or 'min-max' (e.g., '1,10' or '1-10').",
+              },
+              q_keywords: {
+                type: "string",
+                description: "String of words to filter results by.",
+              },
+              page: {
+                type: "number",
+                description: "The page number of results to retrieve.",
+              },
+              per_page: {
+                type: "number",
+                description: "Number of search results to return per page.",
               },
             },
           },

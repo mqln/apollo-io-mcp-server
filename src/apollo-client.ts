@@ -45,9 +45,18 @@ export interface OrganizationEnrichmentQuery {
 }
 
 export interface PeopleSearchQuery {
-  q_organization_domains_list?: string[];
   person_titles?: string[];
+  include_similar_titles?: boolean;
+  person_locations?: string[];
   person_seniorities?: string[];
+  organization_locations?: string[];
+  q_organization_domains_list?: string[];
+  contact_email_status?: string[];
+  organization_ids?: string[];
+  organization_num_employees_ranges?: string[];
+  q_keywords?: string;
+  page?: number;
+  per_page?: number;
   [key: string]: any;
 }
 
