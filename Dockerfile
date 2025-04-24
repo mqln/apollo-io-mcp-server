@@ -1,22 +1,30 @@
 FROM node:22.12-alpine AS builder
 
+# Copy project files
 COPY . /app
-
 WORKDIR /app
 
+# Install dependencies
 RUN npm install
+
+# Build TypeScript
+RUN npm run build
 
 FROM node:22-alpine AS release
 
 WORKDIR /app
 
-COPY --from=builder /app/build /app/build
+# Copy build artifacts and package files
+COPY --from=builder /app/dist /app/dist
 COPY --from=builder /app/package.json /app/package.json
 COPY --from=builder /app/package-lock.json /app/package-lock.json
 
 ENV NODE_ENV=production
 
+# Install production dependencies only
+RUN npm install --omit=dev
 
-RUN npm ci --ignore-scripts --omit-dev
 EXPOSE 8080
-ENTRYPOINT ["npx", "mcp-proxy", "node", "/app/dist/index.js"]
+
+# Use a simpler entrypoint that matches npm start
+ENTRYPOINT ["node", "dist/index.js"]
