@@ -194,7 +194,17 @@ export class ApolloClient {
   async organizationSearch(query: OrganizationSearchQuery): Promise<any> {
     try {
       const url = `${this.baseUrl}/mixed_companies/search`;
-      const response = await this.axiosInstance.post(url, query);
+
+      // Format parameters in the way the API expects
+      const formattedParams = this.formatQueryParams(query);
+
+      const response = await this.axiosInstance.post(
+        url,
+        {},
+        {
+          params: formattedParams,
+        }
+      );
 
       if (response.status === 200) {
         return response.data;
@@ -210,6 +220,44 @@ export class ApolloClient {
       );
       return null;
     }
+  }
+
+  /**
+   * Formats query parameters to match the Apollo API's expected format
+   * Handles arrays with [] suffix and nested objects like revenue_range[min]
+   */
+  private formatQueryParams(query: any): any {
+    const formattedParams: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        // Handle array parameters (add [] suffix)
+        value.forEach((item) => {
+          // Use bracket notation for arrays
+          const paramKey = `${key}[]`;
+          if (!formattedParams[paramKey]) {
+            formattedParams[paramKey] = [];
+          }
+          formattedParams[paramKey].push(item);
+        });
+      } else if (typeof value === "object") {
+        // Handle nested objects like revenue_range
+        for (const [subKey, subValue] of Object.entries(value)) {
+          if (subValue !== undefined && subValue !== null) {
+            formattedParams[`${key}[${subKey}]`] = subValue;
+          }
+        }
+      } else {
+        // Regular parameters
+        formattedParams[key] = value;
+      }
+    }
+
+    return formattedParams;
   }
 
   /**
