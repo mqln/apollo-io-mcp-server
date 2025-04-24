@@ -54,10 +54,18 @@ export interface PeopleSearchQuery {
 export interface OrganizationSearchQuery {
   q_organization_domains_list?: string[];
   organization_locations?: string[];
-  organization_num_employees_ranges?: string[]; // Added organization size parameter
-  organization_revenues?: string[]; // Added organization revenue parameter
-  organization_industries?: string[]; // Added organization industry parameter
-  organization_funding_ranges?: string[]; // Added organization funding parameter
+  organization_not_locations?: string[];
+  organization_num_employees_ranges?: string[]; // Employee size ranges in format "1,10", "11,50", etc.
+  revenue_range?: {
+    min?: number;
+    max?: number;
+  };
+  currently_using_any_of_technology_uids?: string[];
+  q_organization_keyword_tags?: string[];
+  q_organization_name?: string;
+  organization_ids?: string[];
+  page?: number;
+  per_page?: number;
   [key: string]: any;
 }
 
@@ -178,14 +186,10 @@ export class ApolloClient {
    * https://docs.apollo.io/reference/organization-search
    *
    * Supported organization size ranges (organization_num_employees_ranges):
-   * - "1-10"
-   * - "11-50"
-   * - "51-200"
-   * - "201-500"
-   * - "501-1000"
-   * - "1001-5000"
-   * - "5001-10000"
-   * - "10001+"
+   * Format: "min,max" - Example: "1,10", "11,50", "51,200", etc.
+   *
+   * revenue_range: Use min and max properties to specify revenue range (in numbers without commas)
+   * Example: { min: 300000, max: 50000000 }
    */
   async organizationSearch(query: OrganizationSearchQuery): Promise<any> {
     try {

@@ -171,39 +171,61 @@ class ApolloServer {
               },
               organization_num_employees_ranges: {
                 type: "array",
-                items: {
-                  type: "string",
-                  enum: [
-                    "1-10",
-                    "11-50",
-                    "51-200",
-                    "201-500",
-                    "501-1000",
-                    "1001-5000",
-                    "5001-10000",
-                    "10001+",
-                  ],
+                items: { type: "string" },
+                description:
+                  'List of employee count ranges to filter by. Format: "min,max" (e.g., "1,10", "11,50", "51,200", etc.)',
+              },
+              organization_not_locations: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  'List of locations to exclude from search (e.g., "ireland", "minnesota", etc.)',
+              },
+              revenue_range: {
+                type: "object",
+                properties: {
+                  min: {
+                    type: "number",
+                    description: "Minimum revenue (e.g., 300000)",
+                  },
+                  max: {
+                    type: "number",
+                    description: "Maximum revenue (e.g., 50000000)",
+                  },
                 },
                 description:
-                  'List of employee count ranges to filter by (e.g., "1-10", "11-50", "51-200", etc.)',
+                  "Revenue range to filter by (do not include currency symbols or commas)",
               },
-              organization_revenues: {
+              currently_using_any_of_technology_uids: {
                 type: "array",
                 items: { type: "string" },
                 description:
-                  'List of annual revenue ranges to filter by (e.g., "$1M-$10M", "$10M-$50M", etc.)',
+                  'Technologies the company is using (e.g., "salesforce", "google_analytics", etc.)',
               },
-              organization_industries: {
+              q_organization_keyword_tags: {
                 type: "array",
                 items: { type: "string" },
                 description:
-                  'List of industries to filter by (e.g., "Software", "Healthcare", etc.)',
+                  'Keywords associated with companies (e.g., "mining", "consulting", etc.)',
               },
-              organization_funding_ranges: {
+              q_organization_name: {
+                type: "string",
+                description:
+                  'Filter results by company name (e.g., "apollo" or "mining")',
+              },
+              organization_ids: {
                 type: "array",
                 items: { type: "string" },
                 description:
-                  'List of funding ranges to filter by (e.g., "$1M-$5M", "$5M-$10M", etc.)',
+                  "Specific Apollo organization IDs to include in search",
+              },
+              page: {
+                type: "number",
+                description: "Page number for pagination",
+              },
+              per_page: {
+                type: "number",
+                description: "Number of results per page",
               },
             },
           },
