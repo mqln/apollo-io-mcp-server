@@ -29,7 +29,7 @@ if (!apiKey) {
 }
 
 // Utility function to sanitize range formats
-function sanitizeRanges(ranges) {
+function sanitizeRanges(ranges: string[] | undefined): string[] | undefined {
   if (!ranges || !Array.isArray(ranges)) return ranges;
 
   return ranges.map((range) => {
@@ -315,7 +315,7 @@ class ApolloServer {
           args.organization_num_employees_ranges
         ) {
           args.organization_num_employees_ranges = sanitizeRanges(
-            args.organization_num_employees_ranges
+            args.organization_num_employees_ranges as string[]
           );
         }
 
