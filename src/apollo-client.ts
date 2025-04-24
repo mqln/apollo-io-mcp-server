@@ -172,7 +172,9 @@ export class ApolloClient {
   async peopleSearch(query: PeopleSearchQuery): Promise<any> {
     try {
       const url = `${this.baseUrl}/mixed_people/search`;
-      const response = await this.axiosInstance.post(url, query);
+      const formattedParams = this.formatQueryParams(query);
+
+      const response = await this.axiosInstance.post(url, formattedParams);
 
       if (response.status === 200) {
         return response.data;
