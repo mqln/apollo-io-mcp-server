@@ -8,7 +8,7 @@ import {
   McpError,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { ApolloClient } from "./apollo-client.js";
+import { ApolloClient, BulkPeopleEnrichmentQuery } from "./apollo-client.js";
 import dotenv from "dotenv";
 import { parseArgs } from "node:util";
 
@@ -350,6 +350,65 @@ class ApolloServer {
             required: ["company"],
           },
         },
+        {
+          name: "bulk_people_enrichment",
+          description:
+            "Use the Bulk People Enrichment endpoint to enrich data for up to 10 people with a single API call",
+          inputSchema: {
+            type: "object",
+            properties: {
+              details: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    first_name: {
+                      type: "string",
+                      description: "Person's first name",
+                    },
+                    last_name: {
+                      type: "string",
+                      description: "Person's last name",
+                    },
+                    email: {
+                      type: "string",
+                      description: "Person's email address",
+                    },
+                    domain: {
+                      type: "string",
+                      description: "Company domain",
+                    },
+                    organization_name: {
+                      type: "string",
+                      description: "Organization name",
+                    },
+                    linkedin_url: {
+                      type: "string",
+                      description: "Person's LinkedIn profile URL",
+                    },
+                  },
+                },
+                description: "Array of people to enrich (max 10)",
+              },
+              reveal_personal_emails: {
+                type: "boolean",
+                description:
+                  "Set to true to enrich with personal emails (may consume credits). Default is false.",
+              },
+              reveal_phone_number: {
+                type: "boolean",
+                description:
+                  "Set to true to enrich with phone numbers (may consume credits). Requires webhook_url. Default is false.",
+              },
+              webhook_url: {
+                type: "string",
+                description:
+                  "Webhook URL where Apollo will send phone number data (required if reveal_phone_number is true)",
+              },
+            },
+            required: ["details"],
+          },
+        },
       ];
 
       return { tools };
@@ -370,6 +429,27 @@ class ApolloServer {
         }
 
         switch (request.params.name) {
+          case "bulk_people_enrichment": {
+            // Asserting that args has the required 'details' property
+            if (!args.details || !Array.isArray(args.details)) {
+              throw new Error(
+                "The 'details' array is required for bulk people enrichment"
+              );
+            }
+
+            // Type assertion to tell TypeScript that args matches the required interface
+            const result = await this.apollo.bulkPeopleEnrichment(
+              args as BulkPeopleEnrichmentQuery
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
           case "people_enrichment": {
             const result = await this.apollo.peopleEnrichment(args);
             return {

@@ -28,6 +28,21 @@ const stripUrl = (url?: string): string | undefined => {
   }
 };
 
+export interface BulkPeopleEnrichmentQuery {
+  details: Array<{
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    domain?: string;
+    organization_name?: string;
+    linkedin_url?: string;
+    [key: string]: any;
+  }>;
+  reveal_personal_emails?: boolean;
+  reveal_phone_number?: boolean;
+  webhook_url?: string;
+  [key: string]: any;
+}
 // Type definitions for Apollo.io API responses
 export interface PeopleEnrichmentQuery {
   first_name?: string;
@@ -120,6 +135,31 @@ export class ApolloClient {
       const url = `${this.baseUrl}/people/match`;
       console.log("url", url);
       console.log("query", query);
+      const response = await this.axiosInstance.post(url, query);
+
+      if (response.status === 200) {
+        return response.data;
+      } else {
+        console.error(`Error: ${response.status} - ${response.statusText}`);
+        return null;
+      }
+    } catch (error: any) {
+      console.error(
+        `Error: ${error.response?.status} - ${
+          error.response?.statusText || error.message
+        }`
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Use the Bulk People Enrichment endpoint to enrich data for up to 10 people.
+   * https://docs.apollo.io/reference/bulk-people-enrichment
+   */
+  async bulkPeopleEnrichment(query: BulkPeopleEnrichmentQuery): Promise<any> {
+    try {
+      const url = `${this.baseUrl}/people/bulk_match`;
       const response = await this.axiosInstance.post(url, query);
 
       if (response.status === 200) {
