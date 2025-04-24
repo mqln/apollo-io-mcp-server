@@ -1,458 +1,445 @@
-import axios, { AxiosInstance } from "axios";
+#!/usr/bin/env node
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+  Tool,
+} from "@modelcontextprotocol/sdk/types.js";
+import { ApolloClient } from "./apollo-client.js";
 import dotenv from "dotenv";
+import { parseArgs } from "node:util";
 
 // Load environment variables
 dotenv.config();
 
-// Helper function to strip URL
-const stripUrl = (url?: string): string | undefined => {
-  if (!url) return undefined;
+// Parse command line arguments
+const { values } = parseArgs({
+  options: {
+    "api-key": { type: "string" },
+  },
+});
 
-  try {
-    // Remove protocol (http://, https://)
-    let stripped = url.replace(/^https?:\/\//, "");
-
-    // Remove www.
-    stripped = stripped.replace(/^www\./, "");
-
-    // Remove trailing slash
-    stripped = stripped.replace(/\/$/, "");
-
-    // Convert to lowercase
-    stripped = stripped.toLowerCase();
-
-    return stripped;
-  } catch (error) {
-    console.error("Error stripping URL:", error);
-    return url;
-  }
-};
-
-// Type definitions for Apollo.io API responses
-export interface PeopleEnrichmentQuery {
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  domain?: string;
-  organization_name?: string;
-  [key: string]: any;
+// Initialize Apollo.io client
+const apiKey = values["api-key"] || process.env.APOLLO_IO_API_KEY;
+if (!apiKey) {
+  throw new Error("APOLLO_IO_API_KEY environment variable is required");
 }
 
-export interface OrganizationEnrichmentQuery {
-  domain?: string;
-  name?: string;
-  [key: string]: any;
-}
+// Utility function to sanitize range formats
+function sanitizeRanges(ranges) {
+  if (!ranges || !Array.isArray(ranges)) return ranges;
 
-export interface PeopleSearchQuery {
-  q_organization_domains_list?: string[];
-  person_titles?: string[];
-  person_seniorities?: string[];
-  [key: string]: any;
-}
-
-export interface OrganizationSearchQuery {
-  q_organization_domains_list?: string[];
-  organization_locations?: string[];
-  organization_not_locations?: string[];
-  organization_num_employees_ranges?: string[]; // Employee size ranges in format "1,10", "11,50", etc.
-  revenue_range?: {
-    min?: number;
-    max?: number;
-  };
-  currently_using_any_of_technology_uids?: string[];
-  q_organization_keyword_tags?: string[];
-  q_organization_name?: string;
-  organization_ids?: string[];
-  page?: number;
-  per_page?: number;
-  [key: string]: any;
-}
-
-export interface EmployeesOfCompanyQuery {
-  company: string;
-  website_url?: string;
-  linkedin_url?: string;
-  [key: string]: any;
-}
-
-export class ApolloClient {
-  private apiKey: string;
-  private baseUrl: string;
-  private headers: Record<string, string>;
-  private axiosInstance: AxiosInstance;
-
-  constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.APOLLO_IO_API_KEY || "";
-
-    if (!this.apiKey) {
-      throw new Error("APOLLO_IO_API_KEY environment variable is required");
+  return ranges.map((range) => {
+    // If the range contains a hyphen, convert it to a comma
+    if (typeof range === "string" && range.includes("-")) {
+      return range.replace("-", ",");
     }
+    return range;
+  });
+}
 
-    this.baseUrl = "https://api.apollo.io/api/v1";
-    this.headers = {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-cache",
-      "x-api-key": this.apiKey,
+class ApolloServer {
+  // Core server properties
+  private server: Server;
+  private apollo: ApolloClient;
+
+  constructor() {
+    this.server = new Server(
+      {
+        name: "apollo-io-manager",
+        version: "0.1.0",
+      },
+      {
+        capabilities: {
+          resources: {},
+          tools: {},
+        },
+      }
+    );
+
+    this.apollo = new ApolloClient(apiKey);
+
+    this.setupToolHandlers();
+    this.setupErrorHandling();
+  }
+
+  private setupErrorHandling(): void {
+    this.server.onerror = (error) => {
+      console.error("[MCP Error]", error);
     };
 
-    this.axiosInstance = axios.create({
-      baseURL: this.baseUrl,
-      headers: this.headers,
+    process.on("SIGINT", async () => {
+      await this.server.close();
+      process.exit(0);
+    });
+
+    process.on("uncaughtException", (error) => {
+      console.error("Uncaught exception:", error);
+    });
+
+    process.on("unhandledRejection", (reason, promise) => {
+      console.error("Unhandled rejection at:", promise, "reason:", reason);
     });
   }
 
-  /**
-   * Use the People Enrichment endpoint to enrich data for 1 person.
-   * https://docs.apollo.io/reference/people-enrichment
-   */
-  async peopleEnrichment(query: PeopleEnrichmentQuery): Promise<any> {
-    try {
-      const url = `${this.baseUrl}/people/match`;
-      console.log("url", url);
-      console.log("query", query);
-      const response = await this.axiosInstance.post(url, query);
-
-      if (response.status === 200) {
-        return response.data;
-      } else {
-        console.error(`Error: ${response.status} - ${response.statusText}`);
-        return null;
-      }
-    } catch (error: any) {
-      console.error(
-        `Error: ${error.response?.status} - ${
-          error.response?.statusText || error.message
-        }`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Use the Organization Enrichment endpoint to enrich data for 1 company.
-   * https://docs.apollo.io/reference/organization-enrichment
-   */
-  async organizationEnrichment(
-    query: OrganizationEnrichmentQuery
-  ): Promise<any> {
-    try {
-      const url = `${this.baseUrl}/organizations/enrich`;
-      const response = await this.axiosInstance.get(url, { params: query });
-
-      if (response.status === 200) {
-        return response.data;
-      } else {
-        console.error(`Error: ${response.status} - ${response.statusText}`);
-        return null;
-      }
-    } catch (error: any) {
-      console.error(
-        `Error: ${error.response?.status} - ${
-          error.response?.statusText || error.message
-        }`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Use the People Search endpoint to find people.
-   * https://docs.apollo.io/reference/people-search
-   */
-  async peopleSearch(query: PeopleSearchQuery): Promise<any> {
-    try {
-      const url = `${this.baseUrl}/mixed_people/search`;
-      const response = await this.axiosInstance.post(url, query);
-
-      if (response.status === 200) {
-        return response.data;
-      } else {
-        console.error(`Error: ${response.status} - ${response.statusText}`);
-        return null;
-      }
-    } catch (error: any) {
-      console.error(
-        `Error: ${error.response?.status} - ${
-          error.response?.statusText || error.message
-        }`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Use the Organization Search endpoint to find organizations.
-   * https://docs.apollo.io/reference/organization-search
-   *
-   * Supported organization size ranges (organization_num_employees_ranges):
-   * Format: "min,max" - Example: "1,10", "11,50", "51,200", etc.
-   *
-   * revenue_range: Use min and max properties to specify revenue range (in numbers without commas)
-   * Example: { min: 300000, max: 50000000 }
-   */
-  async organizationSearch(query: OrganizationSearchQuery): Promise<any> {
-    try {
-      const url = `${this.baseUrl}/mixed_companies/search`;
-
-      // Format parameters in the way the API expects
-      const formattedParams = this.formatQueryParams(query);
-
-      const response = await this.axiosInstance.post(
-        url,
-        {},
+  private setupToolHandlers(): void {
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      // Define available tools
+      const tools: Tool[] = [
         {
-          params: formattedParams,
-        }
-      );
-
-      if (response.status === 200) {
-        return response.data;
-      } else {
-        console.error(`Error: ${response.status} - ${response.statusText}`);
-        return null;
-      }
-    } catch (error: any) {
-      console.error(
-        `Error: ${error.response?.status} - ${
-          error.response?.statusText || error.message
-        }`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Formats query parameters to match the Apollo API's expected format
-   * Handles arrays with [] suffix and nested objects like revenue_range[min]
-   * Automatically converts hyphen-separated ranges to comma-separated format
-   */
-  private formatQueryParams(query: any): any {
-    const formattedParams: Record<string, any> = {};
-
-    for (const [key, value] of Object.entries(query)) {
-      if (value === undefined || value === null) {
-        continue;
-      }
-
-      if (Array.isArray(value)) {
-        // Handle array parameters (add [] suffix)
-        value.forEach((item) => {
-          // Convert any hyphen-separated ranges to comma-separated format
-          let formattedItem = item;
-          if (
-            typeof item === "string" &&
-            (key === "organization_num_employees_ranges" ||
-              key.endsWith("_ranges"))
-          ) {
-            // Check if the string contains a hyphen but not a comma
-            if (item.includes("-") && !item.includes(",")) {
-              formattedItem = item.replace("-", ",");
-            }
-          }
-
-          // Use bracket notation for arrays
-          const paramKey = `${key}[]`;
-          if (!formattedParams[paramKey]) {
-            formattedParams[paramKey] = [];
-          }
-          formattedParams[paramKey].push(formattedItem);
-        });
-      } else if (typeof value === "object") {
-        // Handle nested objects like revenue_range
-        for (const [subKey, subValue] of Object.entries(value)) {
-          if (subValue !== undefined && subValue !== null) {
-            formattedParams[`${key}[${subKey}]`] = subValue;
-          }
-        }
-      } else {
-        // Regular parameters
-        formattedParams[key] = value;
-      }
-    }
-
-    return formattedParams;
-  }
-
-  /**
-   * Use the Organization Job Postings endpoint to find job postings for a specific organization.
-   * https://docs.apollo.io/reference/organization-jobs-postings
-   */
-  async organizationJobPostings(organizationId: string): Promise<any> {
-    try {
-      const url = `${this.baseUrl}/organizations/${organizationId}/job_postings`;
-      const response = await this.axiosInstance.get(url);
-
-      if (response.status === 200) {
-        return response.data;
-      } else {
-        console.error(`Error: ${response.status} - ${response.statusText}`);
-        return null;
-      }
-    } catch (error: any) {
-      console.error(
-        `Error: ${error.response?.status} - ${
-          error.response?.statusText || error.message
-        }`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Get email address for a person using their Apollo ID
-   */
-  async getPersonEmail(apolloId: string): Promise<any> {
-    try {
-      if (!apolloId) {
-        throw new Error("Apollo ID is required");
-      }
-
-      const baseUrl = `https://app.apollo.io/api/v1/mixed_people/add_to_my_prospects`;
-      const payload = {
-        entity_ids: [apolloId],
-        analytics_context: "Searcher: Individual Add Button",
-        skip_fetching_people: true,
-        cta_name: "Access email",
-        cacheKey: Date.now(),
-      };
-
-      const response = await axios.post(baseUrl, payload, {
-        headers: {
-          "X-Api-Key": this.apiKey,
-          "Content-Type": "application/json",
+          name: "people_enrichment",
+          description:
+            "Use the People Enrichment endpoint to enrich data for 1 person",
+          inputSchema: {
+            type: "object",
+            properties: {
+              first_name: {
+                type: "string",
+                description: "Person's first name",
+              },
+              last_name: {
+                type: "string",
+                description: "Person's last name",
+              },
+              email: {
+                type: "string",
+                description: "Person's email address",
+              },
+              domain: {
+                type: "string",
+                description: "Company domain",
+              },
+              organization_name: {
+                type: "string",
+                description: "Organization name",
+              },
+              linkedin_url: {
+                type: "string",
+                description: "Person's LinkedIn profile URL",
+              },
+            },
+          },
         },
-      });
+        {
+          name: "organization_enrichment",
+          description:
+            "Use the Organization Enrichment endpoint to enrich data for 1 company",
+          inputSchema: {
+            type: "object",
+            properties: {
+              domain: {
+                type: "string",
+                description: "Company domain",
+              },
+              name: {
+                type: "string",
+                description: "Company name",
+              },
+            },
+          },
+        },
+        {
+          name: "people_search",
+          description: "Use the People Search endpoint to find people",
+          inputSchema: {
+            type: "object",
+            properties: {
+              q_organization_domains_list: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of organization domains to search within",
+              },
+              person_titles: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of job titles to search for",
+              },
+              person_seniorities: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of seniority levels to search for",
+              },
+            },
+          },
+        },
+        {
+          name: "organization_search",
+          description:
+            "Use the Organization Search endpoint to find organizations",
+          inputSchema: {
+            type: "object",
+            properties: {
+              q_organization_domains_list: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of organization domains to search for",
+              },
+              organization_locations: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of organization locations to search for",
+              },
+              organization_num_employees_ranges: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  'List of employee count ranges to filter by. Format: "min,max" (e.g., "1,10", "11,50", "51,200", etc.) or "min-max" (e.g., "1-10", "11-50", "51-200", etc.)',
+              },
+              organization_not_locations: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  'List of locations to exclude from search (e.g., "ireland", "minnesota", etc.)',
+              },
+              revenue_range: {
+                type: "object",
+                properties: {
+                  min: {
+                    type: "number",
+                    description: "Minimum revenue (e.g., 300000)",
+                  },
+                  max: {
+                    type: "number",
+                    description: "Maximum revenue (e.g., 50000000)",
+                  },
+                },
+                description:
+                  "Revenue range to filter by (do not include currency symbols or commas)",
+              },
+              currently_using_any_of_technology_uids: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  'Technologies the company is using (e.g., "salesforce", "google_analytics", etc.)',
+              },
+              q_organization_keyword_tags: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  'Keywords associated with companies (e.g., "mining", "consulting", etc.)',
+              },
+              q_organization_name: {
+                type: "string",
+                description:
+                  'Filter results by company name (e.g., "apollo" or "mining")',
+              },
+              organization_ids: {
+                type: "array",
+                items: { type: "string" },
+                description:
+                  "Specific Apollo organization IDs to include in search",
+              },
+              page: {
+                type: "number",
+                description: "Page number for pagination",
+              },
+              per_page: {
+                type: "number",
+                description: "Number of results per page",
+              },
+            },
+          },
+        },
+        {
+          name: "organization_job_postings",
+          description:
+            "Use the Organization Job Postings endpoint to find job postings for a specific organization",
+          inputSchema: {
+            type: "object",
+            properties: {
+              organization_id: {
+                type: "string",
+                description: "Apollo.io organization ID",
+              },
+            },
+            required: ["organization_id"],
+          },
+        },
+        {
+          name: "get_person_email",
+          description: "Get email address for a person using their Apollo ID",
+          inputSchema: {
+            type: "object",
+            properties: {
+              apollo_id: {
+                type: "string",
+                description: "Apollo.io person ID",
+              },
+            },
+            required: ["apollo_id"],
+          },
+        },
+        {
+          name: "employees_of_company",
+          description:
+            "Find employees of a company using company name or website/LinkedIn URL",
+          inputSchema: {
+            type: "object",
+            properties: {
+              company: {
+                type: "string",
+                description: "Company name",
+              },
+              website_url: {
+                type: "string",
+                description: "Company website URL",
+              },
+              linkedin_url: {
+                type: "string",
+                description: "Company LinkedIn URL",
+              },
+              person_seniorities: {
+                type: "string",
+                description:
+                  "Comma-separated list of seniority levels to filter by",
+              },
+            },
+            required: ["company"],
+          },
+        },
+      ];
 
-      if (!response.data) {
-        throw new Error("No data received from Apollo API");
+      return { tools };
+    });
+
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      try {
+        const args = request.params.arguments ?? {};
+
+        // Apply sanitization for organization search params
+        if (
+          request.params.name === "organization_search" &&
+          args.organization_num_employees_ranges
+        ) {
+          args.organization_num_employees_ranges = sanitizeRanges(
+            args.organization_num_employees_ranges
+          );
+        }
+
+        switch (request.params.name) {
+          case "people_enrichment": {
+            const result = await this.apollo.peopleEnrichment(args);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "organization_enrichment": {
+            const result = await this.apollo.organizationEnrichment(args);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "people_search": {
+            const result = await this.apollo.peopleSearch(args);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "organization_search": {
+            const result = await this.apollo.organizationSearch(args);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "organization_job_postings": {
+            const result = await this.apollo.organizationJobPostings(
+              args.organization_id as string
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "get_person_email": {
+            const result = await this.apollo.getPersonEmail(
+              args.apollo_id as string
+            );
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "employees_of_company": {
+            const result = await this.apollo.employeesOfCompany(args as any);
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new McpError(
+              ErrorCode.MethodNotFound,
+              `Unknown tool: ${request.params.name}`
+            );
+        }
+      } catch (error: any) {
+        console.error(`Error executing tool ${request.params.name}:`, error);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Apollo.io API error: ${error.message}`,
+            },
+          ],
+          isError: true,
+        };
       }
-
-      const emails = (response?.data?.contacts ?? []).map(
-        (item: any) => item.email
-      );
-      return emails;
-    } catch (error: any) {
-      console.error(`Error getting person email: ${error.message}`);
-      return null;
-    }
+    });
   }
 
-  /**
-   * Find employees of a company using company name or website/LinkedIn URL
-   */
-  async employeesOfCompany(query: EmployeesOfCompanyQuery): Promise<any> {
-    try {
-      const { company, website_url, linkedin_url } = query;
-
-      if (!company) {
-        throw new Error("Company name is required");
-      }
-
-      const strippedWebsiteUrl = stripUrl(website_url);
-      const strippedLinkedinUrl = stripUrl(linkedin_url);
-
-      // First search for the company
-      const companySearchPayload = {
-        q_organization_name: company,
-        page: 1,
-        limit: 100,
-      };
-
-      const mixedCompaniesResponse = await axios.post(
-        "https://api.apollo.io/v1/mixed_companies/search",
-        companySearchPayload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Api-Key": this.apiKey,
-          },
-        }
-      );
-
-      if (!mixedCompaniesResponse.data) {
-        throw new Error("No data received from Apollo API");
-      }
-
-      let organizations = mixedCompaniesResponse.data.organizations;
-      if (organizations.length === 0) {
-        throw new Error("No organizations found");
-      }
-
-      // Filter companies by website or LinkedIn URL if provided
-      const companyObjs = organizations.filter((item: any) => {
-        const companyLinkedin = stripUrl(item.linkedin_url);
-        const companyWebsite = stripUrl(item.website_url);
-
-        if (
-          strippedLinkedinUrl &&
-          companyLinkedin &&
-          companyLinkedin === strippedLinkedinUrl
-        ) {
-          return true;
-        } else if (
-          strippedWebsiteUrl &&
-          companyWebsite &&
-          companyWebsite === strippedWebsiteUrl
-        ) {
-          return true;
-        }
-        return false;
-      });
-
-      // If we have filtered results, use the first one, otherwise use the first from the original search
-      const companyObj =
-        companyObjs.length > 0 ? companyObjs[0] : organizations[0];
-      const companyId = companyObj.id;
-
-      if (!companyId) {
-        throw new Error("Could not determine company ID");
-      }
-
-      // Now search for employees
-      const peopleSearchPayload: any = {
-        organization_ids: [companyId],
-        page: 1,
-        limit: 100,
-      };
-
-      // Add optional filters if provided in the tool config
-      if (query.person_seniorities) {
-        peopleSearchPayload.person_titles = (query.person_seniorities ?? "")
-          .split(",")
-          .map((item: string) => item.trim());
-      }
-
-      if (query.contact_email_status) {
-        peopleSearchPayload.contact_email_status_v2 = (
-          query.contact_email_status ?? ""
-        )
-          .split(",")
-          .map((item: string) => item.trim());
-      }
-
-      const peopleResponse = await axios.post(
-        "https://api.apollo.io/v1/mixed_people/search",
-        peopleSearchPayload,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Api-Key": this.apiKey,
-          },
-        }
-      );
-
-      if (!peopleResponse.data) {
-        throw new Error("No data received from Apollo API");
-      }
-
-      return peopleResponse.data.people || [];
-    } catch (error: any) {
-      console.error(`Error finding employees: ${error.message}`);
-      return null;
-    }
+  async run(): Promise<void> {
+    const transport = new StdioServerTransport();
+    await this.server.connect(transport);
+    console.log("Apollo.io MCP server started");
   }
 }
 
-// Export the client for use in other modules
-export default ApolloClient;
+export async function serve(): Promise<void> {
+  const server = new ApolloServer();
+  await server.run();
+}
+
+const server = new ApolloServer();
+server.run().catch(console.error);
