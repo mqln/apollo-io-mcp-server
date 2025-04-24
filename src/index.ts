@@ -396,8 +396,5 @@ export async function serve(): Promise<void> {
   await server.run();
 }
 
-// Start the server if this file is the main module
-if (import.meta.url === process.argv[1]) {
-  const server = new ApolloServer();
-  server.run().catch(console.error);
-}
+const server = new ApolloServer();
+server.run().catch(console.error);
