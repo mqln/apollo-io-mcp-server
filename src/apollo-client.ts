@@ -165,16 +165,21 @@ export class ApolloClient {
     }
   }
 
-  /**
-   * Use the People Search endpoint to find people.
-   * https://docs.apollo.io/reference/people-search
-   */
   async peopleSearch(query: PeopleSearchQuery): Promise<any> {
     try {
       const url = `${this.baseUrl}/mixed_people/search`;
+
+      // Format parameters in the way the API expects
       const formattedParams = this.formatQueryParams(query);
 
-      const response = await this.axiosInstance.post(url, formattedParams);
+      // Use the same approach as organizationSearch
+      const response = await this.axiosInstance.post(
+        url,
+        {},
+        {
+          params: formattedParams,
+        }
+      );
 
       if (response.status === 200) {
         return response.data;
